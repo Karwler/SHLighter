@@ -3,6 +3,7 @@
 #endif
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_net.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -18,10 +19,6 @@
 #define FILE_HOST "host.txt"
 #define THRESHOLD_FREE 10000
 #define THRESHOLD_LOCK 20000
-
-#define ubFalse 0
-#define ubTrue 1
-typedef Uint8 ubBool;
 
 typedef enum {
 	MOVE_LINE_UP,
@@ -48,34 +45,34 @@ typedef enum {
 	MOVE_IN_1
 } Command;
 
-SDL_Window* window = NULL;
-SDL_Renderer* renderer = NULL;
-ubBool run = ubTrue;
+static SDL_Window* window = NULL;
+static SDL_Renderer* renderer = NULL;
+static bool run = true;
 
-TCPsocket socket = NULL;
+static TCPsocket socket = NULL;
 
-SDL_Color color = {0, 0, 0, 255};
-SDL_GameController* controller = NULL;
-ubBool holdLX = ubFalse, holdLY = ubFalse, holdRX = ubFalse, holdRY = ubFalse, holdLT = ubFalse, holdRT = ubFalse;
+static SDL_Color color = {0, 0, 0, 255};
+static SDL_GameController* controller = NULL;
+static bool holdLX = false, holdLY = false, holdRX = false, holdRY = false, holdLT = false, holdRT = false;
 
-ubBool init();
-void updateController();
-void readHost(char* addr, Uint16* port);
-void cleanup();
+static bool init(void);
+static void updateController(void);
+static void readHost(char* addr, Uint16* port);
+static void cleanup(void);
 
-void handleEvent(const SDL_Event* event);
-void eventButtonDown(const SDL_ControllerButtonEvent* button);
-void eventButtonUp(const SDL_ControllerButtonEvent* button);
-void updateColor();
-void eventAxis(const SDL_ControllerAxisEvent* axis);
-void eventStick(Sint16 valX, Sint16 valY, ubBool* holdX, ubBool* holdY, Command cmd);
-void eventTrigger(Sint16 val, ubBool* hold, Command cmd);
-void sendData(Command cmd);
+static void handleEvent(const SDL_Event* event);
+static void eventButtonDown(const SDL_ControllerButtonEvent* button);
+static void eventButtonUp(const SDL_ControllerButtonEvent* button);
+static void updateColor(void);
+static void eventAxis(const SDL_ControllerAxisEvent* axis);
+static void eventStick(Sint16 valX, Sint16 valY, bool* holdX, bool* holdY, Command cmd);
+static void eventTrigger(Sint16 val, bool* hold, Command cmd);
+static void sendData(Command cmd);
 
 #if defined(_WIN32) && !defined(_DEBUG)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 #else
-int main(int argc, char** argv) {
+int main() {
 #endif
 	if (!init())
 		return -1;
@@ -96,27 +93,27 @@ int main(int argc, char** argv) {
 	return 0;
 }
 
-ubBool init() {
+bool init() {
 	// init libraries
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER)) {
 		printf("Couldn't initialize SDL:\n%s\n", SDL_GetError());
-		return ubFalse;
+		return false;
 	}
 	if (SDLNet_Init()) {
 		printf("Couldn't initialize SDL_net:\n%s\n", SDLNet_GetError());
-		return ubFalse;
+		return false;
 	}
 
 	// create window and open game controller
 	window = SDL_CreateWindow("SHLighter", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 300, 300, SDL_WINDOW_SHOWN);
 	if (!window) {
 		printf("Couldn't create window:\n%s\n", SDL_GetError());
-		return ubFalse;
+		return false;
 	}
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if (!renderer) {
 		printf("Couldn't create renderer:\n%s\n", SDL_GetError());
-		return ubFalse;
+		return false;
 	}
 	updateController();
 
@@ -127,14 +124,14 @@ ubBool init() {
 	IPaddress ip;
 	if (SDLNet_ResolveHost(&ip, addr, port)) {
 		printf("Couldn't resolve host:\n%s\n", SDLNet_GetError());
-		return ubFalse;
+		return false;
 	}
 	socket = SDLNet_TCP_Open(&ip);
 	if (!socket) {
 		printf("Couldn't connect:\n%s\n", SDLNet_GetError());
-		return ubFalse;
+		return false;
 	}
-	return ubTrue;
+	return true;
 }
 
 void updateController() {
@@ -165,15 +162,15 @@ void readHost(char* addr, Uint16* port) {
 	}
 	// read address
 	char buff[BLEN];
-	fgets(buff, BLEN, file);
-	for (size_t i=0; i<BLEN; i++)
-		if (buff[i] == '\n' || buff[i] == '\r' || buff[i] == '\0') {
-			memcpy(addr, buff, i);
-			addr[i] = '\0';
-			break;
-		}
+	if (fgets(buff, BLEN, file))
+		for (size_t i=0; i<BLEN; i++)
+			if (buff[i] == '\n' || buff[i] == '\r' || buff[i] == '\0') {
+				memcpy(addr, buff, i);
+				addr[i] = '\0';
+				break;
+			}
 	// read port
-	*port = atoi(fgets(buff, BLEN, file));
+	*port = (Uint16)strtoul(fgets(buff, BLEN, file), NULL, 0);
 	fclose(file);
 }
 
@@ -202,7 +199,7 @@ void handleEvent(const SDL_Event* event) {
 	else if (event->type == SDL_JOYDEVICEADDED || event->type == SDL_JOYDEVICEREMOVED)
 		updateController();
 	else if (event->type == SDL_QUIT)
-		run = ubFalse;
+		run = false;
 }
 
 void eventButtonDown(const SDL_ControllerButtonEvent* button) {
@@ -225,7 +222,7 @@ void eventButtonDown(const SDL_ControllerButtonEvent* button) {
 	else if (button->button == SDL_CONTROLLER_BUTTON_BACK)
 		sendData(MOVE_IN_1);
 	else if (button->button == SDL_CONTROLLER_BUTTON_GUIDE)
-		run = ubFalse;
+		run = false;
 }
 
 void eventButtonUp(const SDL_ControllerButtonEvent* button) {
@@ -234,10 +231,10 @@ void eventButtonUp(const SDL_ControllerButtonEvent* button) {
 }
 
 void updateColor() {
-	ubBool a = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_A);
-	ubBool b = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_B);
-	ubBool x = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_X);
-	ubBool y = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_Y);
+	bool a = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_A);
+	bool b = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_B);
+	bool x = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_X);
+	bool y = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_Y);
 
 	if (y) {
 		if (b) {
@@ -275,10 +272,10 @@ void eventAxis(const SDL_ControllerAxisEvent* axis) {
 		eventTrigger(axis->value, &holdRT, MAKE_DOTS_3);
 }
 
-void eventStick(Sint16 valX, Sint16 valY, ubBool* holdX, ubBool* holdY, Command cmd) {
+void eventStick(Sint16 valX, Sint16 valY, bool* holdX, bool* holdY, Command cmd) {
 	// check if new values are above thresholdR
-	ubBool newHX = abs(valX) > (*holdX ? THRESHOLD_FREE : THRESHOLD_LOCK);
-	ubBool newHY = abs(valY) > (*holdY ? THRESHOLD_FREE : THRESHOLD_LOCK);
+	bool newHX = abs(valX) > (*holdX ? THRESHOLD_FREE : THRESHOLD_LOCK);
+	bool newHY = abs(valY) > (*holdY ? THRESHOLD_FREE : THRESHOLD_LOCK);
 
 	// if stick has moved in one direction, send data to pi
 	if (!(*holdX || *holdY) && (newHX != newHY)) {
@@ -292,17 +289,17 @@ void eventStick(Sint16 valX, Sint16 valY, ubBool* holdX, ubBool* holdY, Command 
 	*holdY = newHY;
 }
 
-void eventTrigger(Sint16 val, ubBool* hold, Command cmd) {
-	ubBool newH = val > (*hold ? THRESHOLD_FREE : THRESHOLD_LOCK);
+void eventTrigger(Sint16 val, bool* hold, Command cmd) {
+	bool newH = val > (*hold ? THRESHOLD_FREE : THRESHOLD_LOCK);
 	if (!*hold && newH)
 		sendData(cmd);
 	*hold = newH;
 }
 
 void sendData(Command cmd) {
-	Uint8 data[DLEN] = {cmd, color.r, color.g, color.b};
+	Uint8 data[DLEN] = {(Uint8)cmd, color.r, color.g, color.b};
 	if (SDLNet_TCP_Send(socket, data, DLEN) < DLEN) {
 		printf("Connection error:\n%s\n", SDLNet_GetError());
-		run = ubFalse;
+		run = false;
 	}
 }
